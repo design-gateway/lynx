@@ -28,6 +28,8 @@
 #include <HTTCP.h>
 #include <LYGlobalDefs.h>	/* added for no_suspend */
 #include <LYUtils.h>
+#include <dglynx10g.h>
+#include <openssl/x509v3.h>
 
 #ifdef NSL_FORK
 #include <signal.h>
@@ -1939,6 +1941,30 @@ int HTDoConnect(const char *url,
      * Now, let's get a socket set up from the server for the data.
      */
 #ifndef INET6
+	// [DGTLS10GC] Start: Initialize and open TCP connection via TOE10GLL-IP
+	const char *econn = getenv("ECONN");
+	if ( (econn!=NULL) && (strcmp("10",econn)==0) && (strcasecmp("https",protocol)==0) ) {
+		// Check Ethernet link status
+		if ( !check_ethlink() ) {
+			status = -1;
+			printf("\r\nLink Down! Please check cable connection\r\n");
+			goto cleanup;
+		}
+		// check whether TOE is already open
+		if ( read_conon() ){
+			status = -1;
+			printf("\r\nCannot open more connection(s)\r\n");
+			goto cleanup;
+		} 
+		// init network parameters
+		init_param(soc_in);
+		// Open connection
+		status = exec_port(PORT_OPEN, ACTIVE);
+		if ( status<0 )
+			printf("\r\nFailed to open connection\r\n");
+		goto cleanup;
+	} 
+	// [DGTLS10GC] End
     *s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (*s == -1) {
 	status = HT_NO_DATA;

@@ -15,6 +15,7 @@
 
 #include <LYexit.h>
 #include <LYLeaks.h>
+#include "dglynx10g.h"
 
 #ifdef DJGPP
 extern void sig_handler_watt(int);
@@ -115,6 +116,13 @@ void cleanup_sig(int sig)
 		   gettext("Exiting via interrupt:"),
 		   sig);
 	    fflush(stdout);
+		// [DGTLS10GC] Start: Close TCP connection and clear rHwAccess flag
+		if ( hasHwAccess==YES )	{
+			if ( read_conon() )
+				exec_port(PORT_CLOSE, ACTIVE);
+			regWrite(HW_ACCESS_REG,0);
+		}
+		// [DGTLS10GC] End
 	}
 #ifndef NOSIGHUP
     } else {
@@ -147,6 +155,13 @@ void cleanup_files(void)
 
 void cleanup(void)
 {
+	// [DGTLS10GC] Start: Close TCP connection and clear rHwAccess flag
+	if ( hasHwAccess==YES )	{
+		if ( read_conon() )
+			exec_port(PORT_CLOSE, ACTIVE);
+		regWrite(HW_ACCESS_REG,0);
+	}
+	// [DGTLS10GC] End
     /*
      * Ignore signals from terminal.
      */

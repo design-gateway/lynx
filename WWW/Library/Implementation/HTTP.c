@@ -45,6 +45,9 @@
 #include <LYLeaks.h>
 #include <LYCurses.h>
 
+#include "dglynx10g.h"
+#include <time.h>
+
 #ifdef USE_SSL
 
 #ifdef USE_OPENSSL_INCL
@@ -89,6 +92,8 @@ BOOLEAN reloading = FALSE;	/* Reloading => send no-cache pragma to proxy */
 char *redirecting_url = NULL;	/* Location: value. */
 BOOL permanent_redirection = FALSE;	/* Got 301 status? */
 BOOL redirect_post_content = FALSE;	/* Don't convert to GET? */
+
+BOOLEAN hasHwAccess = NO;
 
 #ifdef USE_SSL
 SSL_CTX *ssl_ctx = NULL;	/* SSL ctx */
@@ -354,12 +359,17 @@ void HTSSLInitPRNG(void)
 	 ? SSL_write(handle, buff, size) \
 	 : NETWRITE(sock, buff, size))
 
+// [DGTLS10GC] Start: Close TCP connection and clear rHwAccess flag
 #define HTTP_NETCLOSE(sock, handle)  \
 	{ (void)NETCLOSE(sock); \
 	  if (handle) \
 	      SSL_free(handle); \
 	  SSL_handle = handle = NULL; \
+	  if ( hasHwAccess==YES ) { \
+	  exec_port(PORT_CLOSE, ACTIVE);\
+	  regWrite(HW_ACCESS_REG,0); }\
 	}
+// [DGTLS10GC] End
 
 #else
 #define HTTP_NETREAD(a, b, c, d)   NETREAD(a, b, c)
@@ -913,6 +923,21 @@ static int HTLoadHTTP(const char *arg,
      * At this point, we're talking HTTP/1.0.
      */
     extensions = YES;
+
+	// [DGTLS10GC] Start: if ECONN=10, check whether Hardware is available to access
+	unsigned int	int_tmp;
+	const char *econn = getenv("ECONN");
+	if ( (econn!=NULL) && strcmp("10",econn)==0 ){
+		regRead(HW_ACCESS_REG, &int_tmp);
+		if ( int_tmp!=0 ){
+			printf("Hardware is in use and cannot be accessed simultaneously.\r\n");
+			goto done;
+		} else {
+			regWrite(HW_ACCESS_REG, 1);
+			hasHwAccess = YES;
+		}
+	}
+	// [DGTLS10GC] End
 
   try_again:
     /*
@@ -2811,6 +2836,14 @@ static int HTLoadHTTP(const char *arg,
      */
     reloading = FALSE;
 #ifdef USE_SSL
+	// [DGTLS10GC] Start: Clear rHwAccess flag
+	if ( hasHwAccess==YES )
+	{
+		exec_port(PORT_CLOSE, ACTIVE);
+		regWrite(HW_ACCESS_REG,0);
+	}
+	// [DGTLS10GC] End
+	
     FREE(connect_host);
     if (handle) {
 	SSL_free(handle);
